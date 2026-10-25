@@ -110,3 +110,20 @@ services:
       - ${HOME}/.databrickscfg:/root/.databrickscfg:ro
       - ./bridge-state:/app/state
     restart: unless-stopped
+
+  edicom-simulator:
+    build:
+      context: .
+      dockerfile: Dockerfile.edicom
+    container_name: edicom_simulator
+    depends_on:
+      - minio-landing
+    environment:
+      - MINIO_ENDPOINT=http://minio-landing:9000
+      - MINIO_ACCESS_KEY=minioadmin
+      - MINIO_SECRET_KEY=minioadmin
+      - MINIO_BUCKET=landing-zone
+      - MINIO_PREFIX=edicom/sellout
+      - EDICOM_BACKFILL_DAYS=30
+      - SIMULATION_INTERVAL_SECONDS=60
+    restart: unless-stopped

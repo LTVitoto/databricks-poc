@@ -3,7 +3,7 @@
   "config": {
     "connector.class": "io.confluent.connect.s3.S3SinkConnector",
     "tasks.max": "1",
-    "topics": "sap.public.sap_clientes_kna1,sap.public.vbrk,sap.public.vbrp,sap.public.acdoca,sap.public.ifrs18_fsv_map",
+    "topics": "sap.public.sap_clientes_kna1,sap.public.vbrk,sap.public.vbrp,sap.public.acdoca,sap.public.ifrs18_fsv_map,sap.public.farma_sell_in,sap.public.map_sku,sap.public.map_cedi",
     "s3.bucket.name": "landing-zone",
     "s3.region": "us-east-1",
     "store.url": "http://minio-landing:9000",
