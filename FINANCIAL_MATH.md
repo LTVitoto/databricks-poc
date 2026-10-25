@@ -63,6 +63,10 @@ Un lote solo es "riesgo de provisión" si **todavía tiene stock remanente** (si
 
 En la estructura de `gold_acdoca_ifrs18` / `gold_ifrs18_pl.py`, esto significa que `provision_risk_value` es una señal que **debería eventualmente registrarse como una línea ACDOCA con `IFRS18_CATEGORY = 'Operating'`** (análoga a la cuenta `620000` de depreciación ya mapeada en `ifrs18_fsv_map`), **reduciendo el Operating Profit consolidado** en ese monto. Esta fase no modifica `gold_acdoca_ifrs18` — el cálculo queda documentado aquí como la base para una futura línea de asiento contable (`racct` de provisión por obsolescencia) dentro del Universal Journal.
 
+## Para el Equipo Directivo
+
+> El Riesgo de Provisión (específicamente por obsolescencia) es la anticipación contable de una pérdida financiera casi segura. En la industria farmacéutica, el inventario tiene fecha de caducidad. Si un lote llega a su fecha límite (o cruza el umbral comercial, típicamente 90 días antes, donde ya no se puede despachar), su valor contable pasa a ser cero, y la empresa debe asumir el costo de destruirlo. Bajo las normas IFRS (incluyendo IFRS 18), no puedes esperar a que el producto se venza para registrar la pérdida. Debes reconocerla en el estado de resultados en el momento en que detectas que el inventario se está moviendo más lento de lo necesario para venderse a tiempo. A esto se le llama Provisión por Deterioro de Inventario. Cuando Claude reportó un impacto de $817,322.75, le está diciendo al CFO: "Basado en el ritmo de Sell-Out actual de las farmacias, tienes $817k en medicamentos que no se van a vender a tiempo. Debes restar este monto de tu Operating Profit hoy mismo." Esto transforma la contabilidad de un registro forense (lo que ya pasó) a una alerta temprana (lo que va a pasar), permitiendo al equipo comercial lanzar promociones urgentes para mover ese stock específico antes de que el daño sea irreversible.
+
 ## Resultado de la última corrida
 
 - `gold_farma_provision_risk`: 2499 filas (matnr × werks × fecha).
