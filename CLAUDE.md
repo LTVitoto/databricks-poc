@@ -237,3 +237,27 @@ Script que construye vía Databricks CLI (`auth env`, `jobs list-runs`) las URLs
 3. SQL Editor.
 
 Ejecutar con `python3 get_ui_links.py` (requiere `.venv` activo) cada vez que se necesiten enlaces frescos — el run-link cambia con cada ejecución del Workflow.
+
+## Control de Versiones
+
+Repositorio Git local inicializado (rama `main`), commit fundacional: `feat: MVP fundacional CDC a Databricks con consolidación IFRS 18`.
+
+**Se sube:**
+- Código: `sync_minio_databricks.py`, `generate_financial_data.py`, `get_ui_links.py`, `create_cfo_dashboard.py`.
+- Infra: `docker-compose.yml`, `Dockerfile.bridge`, `init.sql`.
+- Configuración Debezium: `connectors/*.json`.
+- Notebooks Databricks: `databricks/silver_merge.py`, `databricks/gold_ifrs18_pl.py`.
+- Orquestación: `databricks_job.json`.
+- BI: `cfo_dashboard_queries.sql`.
+- Docs/tooling: `CLAUDE.md`, `.flake8`, `.gitignore`.
+
+**Se excluye (`.gitignore`):**
+- `.venv/` — entorno Python local, reconstruible con `pip install`.
+- `bridge-state/`, `.sync_state.json` — estado de idempotencia local del script puente.
+- `connect-plugins/` — jars del S3SinkConnector (~75MB, re-descargables desde Confluent Hub, ver sección de incidentes).
+- `*.parquet`, `*.csv` — datos, nunca código.
+- `.env`, `*.env`, `.databrickscfg` — credenciales. Ningún script de este repo escribe tokens a disco: el Databricks PAT se lee en runtime vía `databricks auth env` (CLI ya autenticado localmente) y nunca se persiste en un archivo del proyecto.
+
+Nota: las credenciales de Postgres/MinIO en `docker-compose.yml` (`sapadmin/sappassword`, `minioadmin/minioadmin`) son defaults de desarrollo local intencionales, no secretos reales — se suben a propósito como parte de la infraestructura reproducible del PoC.
+
+**Push a GitHub:** pendiente de credenciales del usuario (PAT + nombre de repositorio) — por política de seguridad, el PAT no se genera ni se solicita de forma autónoma; se pide explícitamente por chat antes de configurar el remoto.
