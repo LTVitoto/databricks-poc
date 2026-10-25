@@ -1,0 +1,23 @@
+# Entornos virtuales
+.venv/
+__pycache__/
+*.pyc
+
+# Estado de contenedores / idempotencia (local, no versionable)
+bridge-state/
+.sync_state.json
+
+# Plugins descargados de Confluent Hub (binario pesado, re-descargable)
+connect-plugins/
+
+# Datos y archivos de datos
+*.parquet
+*.csv
+
+# Variables de entorno / credenciales
+.env
+*.env
+.databrickscfg
+
+# Misceláneos OS / editor
+.DS_Store

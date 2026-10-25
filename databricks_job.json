@@ -1,0 +1,22 @@
+{
+  "name": "poc-cdc-ifrs18-workflow",
+  "tasks": [
+    {
+      "task_key": "silver_merge",
+      "notebook_task": {
+        "notebook_path": "/Workspace/Users/victor.figueroa.pinto@gmail.com/poc-cdc-databricks/silver_merge"
+      }
+    },
+    {
+      "task_key": "gold_ifrs18_pl",
+      "depends_on": [
+        {
+          "task_key": "silver_merge"
+        }
+      ],
+      "notebook_task": {
+        "notebook_path": "/Workspace/Users/victor.figueroa.pinto@gmail.com/poc-cdc-databricks/gold_ifrs18_pl"
+      }
+    }
+  ]
+}

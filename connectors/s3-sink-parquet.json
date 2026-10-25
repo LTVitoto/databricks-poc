@@ -1,0 +1,24 @@
+{
+  "name": "S3SinkConnectorFull",
+  "config": {
+    "connector.class": "io.confluent.connect.s3.S3SinkConnector",
+    "tasks.max": "1",
+    "topics": "sap.public.sap_clientes_kna1,sap.public.vbrk,sap.public.vbrp,sap.public.acdoca,sap.public.ifrs18_fsv_map",
+    "s3.bucket.name": "landing-zone",
+    "s3.region": "us-east-1",
+    "store.url": "http://minio-landing:9000",
+    "s3.path.style.access.enabled": "true",
+    "storage.class": "io.confluent.connect.s3.storage.S3Storage",
+    "format.class": "io.confluent.connect.s3.format.parquet.ParquetFormat",
+    "partitioner.class": "io.confluent.connect.storage.partitioner.DefaultPartitioner",
+    "flush.size": "200",
+    "rotate.schedule.interval.ms": "10000",
+    "timezone": "UTC",
+    "consumer.override.auto.offset.reset": "earliest",
+    "schema.compatibility": "NONE",
+    "key.converter": "org.apache.kafka.connect.json.JsonConverter",
+    "key.converter.schemas.enable": "true",
+    "value.converter": "org.apache.kafka.connect.json.JsonConverter",
+    "value.converter.schemas.enable": "true"
+  }
+}

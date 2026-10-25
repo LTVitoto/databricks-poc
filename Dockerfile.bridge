@@ -1,0 +1,13 @@
+FROM python:3.12-slim
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl ca-certificates unzip \
+    && rm -rf /var/lib/apt/lists/* \
+    && curl -fsSL https://raw.githubusercontent.com/databricks/setup-cli/main/install.sh | sh
+
+RUN pip install --no-cache-dir boto3
+
+WORKDIR /app
+COPY sync_minio_databricks.py .
+
+CMD ["python", "sync_minio_databricks.py"]
