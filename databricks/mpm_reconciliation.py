@@ -65,23 +65,11 @@ def main() -> None:
     ebitda_ajustado = ebitda_operacional - costos_corporativos_usd
 
     rows = [
-        (
-            1,
-            "Resultado Operacional (SAP/ACDOCA, IFRS 18 Operating, USD)",
-            resultado_operacional,
-        ),
-        (
-            2,
-            "(-) Costos Logisticos WMS (ABC Costing, CLP->USD)",
-            -costos_wms_usd,
-        ),
-        (3, "= EBITDA Operacional (USD)", ebitda_operacional),
-        (
-            4,
-            "(-) Costos Corporativos Estrategicos (CL_CORP, CLP->USD)",
-            -costos_corporativos_usd,
-        ),
-        (5, "= EBITDA Ajustado (USD)", ebitda_ajustado),
+        (1, "1_Resultado Operacional", resultado_operacional),
+        (2, "2_(-) Costos WMS", -costos_wms_usd),
+        (3, "3_(=) EBITDA Operacional", ebitda_operacional),
+        (4, "4_(-) Costos Corporativos", -costos_corporativos_usd),
+        (5, "5_(=) EBITDA Ajustado", ebitda_ajustado),
     ]
     puente = spark.createDataFrame(rows, ["orden", "concepto", "monto"])
 

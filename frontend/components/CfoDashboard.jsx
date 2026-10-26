@@ -30,8 +30,8 @@ export default function CfoDashboard() {
   const dimensionSummary = useMemo(() => {
     const totals = {};
     for (const row of abcData) {
-      const key = row.dimension_driver;
-      totals[key] = (totals[key] || 0) + row.costo_asignado_linea;
+      const key = row.DIMENSION_DRIVER;
+      totals[key] = (totals[key] || 0) + row.COSTO_ASIGNADO_AL_OBJETO;
     }
     return Object.entries(totals).map(([dimension_driver, costo_total]) => ({
       dimension_driver,
@@ -42,7 +42,7 @@ export default function CfoDashboard() {
   const rootCauseRows = useMemo(
     () =>
       selectedAbc
-        ? abcData.filter((row) => row.dimension_driver === selectedAbc)
+        ? abcData.filter((row) => row.DIMENSION_DRIVER === selectedAbc)
         : [],
     [abcData, selectedAbc],
   );
@@ -50,14 +50,20 @@ export default function CfoDashboard() {
   const showLevel2 = selectedMpm !== null && selectedMpm.includes("Costos WMS");
 
   function handleMpmClick(chartEvent) {
-    if (chartEvent && chartEvent.activeLabel) {
-      setSelectedMpm(chartEvent.activeLabel);
+    const label =
+      chartEvent?.activePayload?.[0]?.payload?.Concepto ??
+      chartEvent?.activeLabel;
+    if (label) {
+      setSelectedMpm(label);
     }
   }
 
   function handleAbcClick(chartEvent) {
-    if (chartEvent && chartEvent.activeLabel) {
-      setSelectedAbc(chartEvent.activeLabel);
+    const label =
+      chartEvent?.activePayload?.[0]?.payload?.dimension_driver ??
+      chartEvent?.activeLabel;
+    if (label) {
+      setSelectedAbc(label);
     }
   }
 
@@ -82,10 +88,10 @@ export default function CfoDashboard() {
           <ResponsiveContainer width="100%" height={300}>
             <BarChart data={mpmData} onClick={handleMpmClick}>
               <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="concepto" tick={{ fontSize: 11 }} />
+              <XAxis dataKey="Concepto" tick={{ fontSize: 11 }} />
               <YAxis />
               <Tooltip />
-              <Bar dataKey="monto" fill="#2563eb" cursor="pointer" />
+              <Bar dataKey="Monto" fill="#2563eb" cursor="pointer" />
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -126,13 +132,13 @@ export default function CfoDashboard() {
               </tr>
             </thead>
             <tbody>
-              {rootCauseRows.map((row) => (
-                <tr key={row.wms_telemetry_id}>
+              {rootCauseRows.map((row, index) => (
+                <tr key={`${row.centro_costo_origen}-${row.fecha}-${index}`}>
                   <td>{row.fecha}</td>
                   <td>{row.centro_costo_origen}</td>
-                  <td>{row.descripcion_recurso}</td>
+                  <td>{row.DESCRIPCION_RECURSO}</td>
                   <td>{row.cantidad_consumida}</td>
-                  <td>{row.costo_asignado_linea}</td>
+                  <td>{row.COSTO_ASIGNADO_AL_OBJETO}</td>
                 </tr>
               ))}
             </tbody>

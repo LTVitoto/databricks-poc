@@ -1,18 +1,23 @@
 """FastAPI backend para la Data App del CFO (Rentabilidad ABC & IFRS 18).
 
-Expone `/api/mpm` y `/api/abc-costs`. La conexion a Databricks SQL Warehouse
-queda configurada via variables de entorno (ver `.env.example`), pero por
-ahora los endpoints devuelven datos de prueba con la misma forma que las
-tablas Gold (`gold_mpm_reconciliation` / `gold_abc_operational_costs`) --
-el wiring a datos reales via `get_connection()` queda para una fase
-posterior.
+Expone `/api/mpm` y `/api/abc-costs` consultando en vivo las tablas Gold del
+Lakehouse via `databricks.sql.connect` (sin datos de prueba).
+
+`/api/abc-costs` hace JOIN con `silver_maestro_drivers_abc` para traer el
+codigo real de `DIMENSION_DRIVER` (1_TIEMPO_OPERATIVO/3_MOVIMIENTO_TRANS/
+4_VOLUMEN_UNIDADES): `gold_abc_operational_costs.dimension_driver` guarda el
+nombre WMS (Segundos_Efectivos/...), no el codigo del maestro que el
+frontend agrupa/filtra en el drill-down de Nivel 2/3. `fecha` se reconstruye
+con `DATE_ADD` porque esta persistida como INT (dias desde epoch, el mismo
+patron de codificacion de Debezium) en `silver_wms_telemetry`.
 """
 
 import os
+from typing import Any
 
 from databricks import sql
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 load_dotenv()
@@ -20,6 +25,23 @@ load_dotenv()
 DATABRICKS_SERVER_HOSTNAME = os.environ.get("DATABRICKS_SERVER_HOSTNAME")
 DATABRICKS_HTTP_PATH = os.environ.get("DATABRICKS_HTTP_PATH")
 DATABRICKS_TOKEN = os.environ.get("DATABRICKS_TOKEN")
+DATABRICKS_CATALOG = os.environ.get("DATABRICKS_CATALOG", "mi_test_catalogo")
+DATABRICKS_SCHEMA = os.environ.get("DATABRICKS_SCHEMA", "default")
+
+SQL_MPM = """SELECT Concepto, Monto
+FROM default.gold_mpm_reconciliation
+ORDER BY Concepto ASC"""
+
+SQL_ABC_COSTS = """SELECT d.DIMENSION_DRIVER AS DIMENSION_DRIVER,
+    a.descripcion_recurso AS DESCRIPCION_RECURSO,
+    a.costo_asignado_linea AS COSTO_ASIGNADO_AL_OBJETO,
+    a.centro_costo_origen AS centro_costo_origen,
+    a.cantidad_consumida AS cantidad_consumida,
+    DATE_ADD(DATE('1970-01-01'), a.fecha) AS fecha
+FROM default.gold_abc_operational_costs a
+JOIN default.silver_maestro_drivers_abc d
+  ON a.centro_costo_origen = d.CENTRO_COSTO_ORIGEN
+ AND a.id_recurso_pool = d.ID_RECURSO_POOL"""
 
 app = FastAPI(title="CFO Dashboard API")
 
@@ -36,58 +58,20 @@ def get_connection():
         server_hostname=DATABRICKS_SERVER_HOSTNAME,
         http_path=DATABRICKS_HTTP_PATH,
         access_token=DATABRICKS_TOKEN,
+        catalog=DATABRICKS_CATALOG,
+        schema=DATABRICKS_SCHEMA,
     )
 
 
-MOCK_MPM_BRIDGE = [
-    {"orden": 1, "concepto": "1_Resultado Operacional", "monto": 4278678.98},
-    {"orden": 2, "concepto": "2_(-) Costos WMS", "monto": -4701.32},
-    {"orden": 3, "concepto": "3_(=) EBITDA Operacional", "monto": 4273977.66},
-    {"orden": 4, "concepto": "4_(-) Costos Corporativos", "monto": -169530.84},
-    {"orden": 5, "concepto": "5_(=) EBITDA Ajustado", "monto": 4104446.81},
-]
-
-MOCK_ABC_COSTS = [
-    {
-        "wms_telemetry_id": 1,
-        "sku": "SKU-ABC-001",
-        "pedido": "PED-000001",
-        "centro_costo_origen": "CL_CD0100",
-        "id_recurso_pool": "DRV_EQP_GRUA",
-        "dimension_driver": "3_MOVIMIENTO_TRANS",
-        "cantidad_consumida": 12.5,
-        "descripcion_recurso": "Depreciacion y Mantenimiento Montacargas",
-        "tasa_unitaria_calculada": 111.76,
-        "costo_asignado_linea": 1397.0,
-        "fecha": "2026-04-01",
-    },
-    {
-        "wms_telemetry_id": 2,
-        "sku": "SKU-ABC-002",
-        "pedido": "PED-000002",
-        "centro_costo_origen": "CL_CD0200",
-        "id_recurso_pool": "DRV_MAT_EMBALAJE",
-        "dimension_driver": "4_VOLUMEN_UNIDADES",
-        "cantidad_consumida": 45.0,
-        "descripcion_recurso": "Insumos Cajas Carton y Cinta",
-        "tasa_unitaria_calculada": 50.0,
-        "costo_asignado_linea": 2250.0,
-        "fecha": "2026-04-02",
-    },
-    {
-        "wms_telemetry_id": 3,
-        "sku": "SKU-ABC-003",
-        "pedido": "PED-000003",
-        "centro_costo_origen": "CL_CD0300",
-        "id_recurso_pool": "DRV_MOD_CUADRILLA",
-        "dimension_driver": "1_TIEMPO_OPERATIVO",
-        "cantidad_consumida": 180.0,
-        "descripcion_recurso": "Operario_Descarga_Cuadrilla",
-        "tasa_unitaria_calculada": 3.09,
-        "costo_asignado_linea": 556.2,
-        "fecha": "2026-04-03",
-    },
-]
+def run_query(query: str) -> list[dict[str, Any]]:
+    try:
+        with get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(query)
+                columns = [col[0] for col in cursor.description]
+                return [dict(zip(columns, row)) for row in cursor.fetchall()]
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
 @app.get("/api/health")
@@ -97,9 +81,9 @@ def health():
 
 @app.get("/api/mpm")
 def get_mpm_bridge():
-    return MOCK_MPM_BRIDGE
+    return run_query(SQL_MPM)
 
 
 @app.get("/api/abc-costs")
 def get_abc_costs():
-    return MOCK_ABC_COSTS
+    return run_query(SQL_ABC_COSTS)
