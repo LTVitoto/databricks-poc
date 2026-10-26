@@ -19,5 +19,9 @@ connect-plugins/
 *.env
 .databrickscfg
 
+# Data App (Next.js + FastAPI)
+node_modules/
+.next/
+
 # Misceláneos OS / editor
 .DS_Store
