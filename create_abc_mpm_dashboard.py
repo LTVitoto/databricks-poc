@@ -43,7 +43,15 @@ SQL_EBITDA_AJUSTADO = f"""SELECT monto AS ebitda_ajustado_usd
 FROM {MPM_TABLE}
 WHERE orden = 5"""
 
-SQL_PUENTE_MPM = f"""SELECT orden, concepto, monto
+SQL_PUENTE_MPM = f"""SELECT orden,
+    CASE orden
+        WHEN 1 THEN '1_Resultado Operacional'
+        WHEN 2 THEN '2_(-) Costos WMS'
+        WHEN 3 THEN '3_(=) EBITDA Operacional'
+        WHEN 4 THEN '4_(-) Costos Corporativos'
+        WHEN 5 THEN '5_(=) EBITDA Ajustado'
+    END AS concepto_ordenado,
+    monto
 FROM {MPM_TABLE}
 ORDER BY orden"""
 
@@ -186,16 +194,12 @@ def build_dashboard_document() -> dict[str, Any]:
                                         "datasetName": "ds_puente_mpm",
                                         "fields": [
                                             {
-                                                "name": "concepto",
-                                                "expression": "`concepto`",
+                                                "name": "concepto_ordenado",
+                                                "expression": "`concepto_ordenado`",
                                             },
                                             {
                                                 "name": "monto",
                                                 "expression": "`monto`",
-                                            },
-                                            {
-                                                "name": "orden",
-                                                "expression": "`orden`",
                                             },
                                         ],
                                         "disaggregated": True,
@@ -204,13 +208,12 @@ def build_dashboard_document() -> dict[str, Any]:
                             ],
                             "spec": {
                                 "version": 3,
-                                "widgetType": "bar",
+                                "widgetType": "waterfall",
                                 "encodings": {
                                     "x": {
-                                        "fieldName": "concepto",
+                                        "fieldName": "concepto_ordenado",
                                         "scale": {"type": "categorical"},
                                         "displayName": "Concepto",
-                                        "sort": {"by": "y-reversed"},
                                     },
                                     "y": {
                                         "fieldName": "monto",
@@ -264,23 +267,13 @@ def build_dashboard_document() -> dict[str, Any]:
                                 "widgetType": "bar",
                                 "encodings": {
                                     "x": {
-                                        "fieldName": "dimension_driver",
-                                        "scale": {"type": "categorical"},
-                                        "displayName": "Dimension Driver",
-                                    },
-                                    "y": {
                                         "fieldName": "costo_total",
                                         "scale": {"type": "quantitative"},
-                                        "displayName": "Costo Total (CLP)",
                                     },
-                                },
-                                "frame": {
-                                    "showTitle": True,
-                                    "title": (
-                                        "Nivel 2: Dimensiones ABC (configurar "
-                                        "como fuente de filtro "
-                                        "p_abc_dimension en la UI)"
-                                    ),
+                                    "y": {
+                                        "fieldName": "dimension_driver",
+                                        "scale": {"type": "categorical"},
+                                    },
                                 },
                             },
                         },
