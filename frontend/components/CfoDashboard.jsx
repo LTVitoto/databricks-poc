@@ -1,428 +1,234 @@
 "use client";
+import React, { useState, useEffect, useMemo } from "react";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
 
-import { useEffect, useMemo, useState } from "react";
-import axios from "axios";
-import {
-  Card,
-  Title,
-  Subtitle,
-  Text,
-  Flex,
-  Grid,
-  BarChart,
-  DonutChart,
-  Table,
-  TableHead,
-  TableRow,
-  TableHeaderCell,
-  TableBody,
-  TableCell,
-  BadgeDelta,
-  Button,
-} from "@tremor/react";
-import { ArrowLeft } from "lucide-react";
+const formatUSD = (val) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(val);
 
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
+const ChevronRight = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-400">
+    <path d="m9 18 6-6-6-6"/>
+  </svg>
+);
 
-const totalFormatter = new Intl.NumberFormat("es-CL", {
-  maximumFractionDigits: 0,
-});
-const unitFormatter = new Intl.NumberFormat("es-CL", {
-  maximumFractionDigits: 2,
-});
+export default function EnterpriseCFO() {
+  const [rawData, setRawData] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-function money(value) {
-  return `$${totalFormatter.format(value ?? 0)}`;
-}
-
-function unit(value) {
-  return value == null ? "-" : unitFormatter.format(value);
-}
-
-function groupSum(rows, keyFn, amountFn) {
-  const map = new Map();
-  for (const row of rows) {
-    const key = keyFn(row);
-    const entry = map.get(key) ?? { key, total: 0, rows: [] };
-    entry.total += amountFn(row) ?? 0;
-    entry.rows.push(row);
-    map.set(key, entry);
-  }
-  return Array.from(map.values());
-}
-
-const BRANCH_WMS = "WMS";
-const BRANCH_CORP = "CORP";
-const DONUT_COLORS = ["blue", "cyan", "indigo", "violet", "fuchsia"];
-
-export default function CfoDashboard() {
-  const [mpmData, setMpmData] = useState([]);
-  const [abcData, setAbcData] = useState([]);
-  const [corpData, setCorpData] = useState([]);
-  const [dataReady, setDataReady] = useState(false);
-
-  const [n1Mpm, setN1Mpm] = useState(null);
-  const [n2Dim, setN2Dim] = useState(null);
-  const [n3Agrup, setN3Agrup] = useState(null);
-  const [n4Recurso, setN4Recurso] = useState(null);
+  const [dim, setDim] = useState(null);
+  const [cedi, setCedi] = useState(null);
+  const [recurso, setRecurso] = useState(null);
 
   useEffect(() => {
-    Promise.all([
-      axios.get(`${API_BASE}/api/mpm`).then((res) => setMpmData(res.data)),
-      axios.get(`${API_BASE}/api/abc-costs`).then((res) => setAbcData(res.data)),
-      axios
-        .get(`${API_BASE}/api/corporate-costs`)
-        .then((res) => setCorpData(res.data)),
-    ]).then(() => setDataReady(true));
+    fetch('http://localhost:8000/api/abc-costs')
+      .then(res => res.json())
+      .then(data => {
+        const normalized = data.map(d => ({
+          dimension: d.dimension_driver || d.DIMENSION_DRIVER,
+          cedi: d.centro_costo_origen || d.CEDI || d.CENTRO_COSTO_ORIGEN,
+          recurso: d.descripcion_recurso || d.DESCRIPCION_RECURSO,
+          costo: Number(d.costo_asignado_al_objeto || d.COSTO_ASIGNADO_AL_OBJETO || d.costo_asignado || 0),
+          cantidad: Number(d.cantidad_consumida || d.VOLUMEN_CONSUMIDO || 0),
+          sku: d.sku || d.SKU,
+          pedido: d.pedido || d.PEDIDO
+        }));
+        setRawData(normalized);
+        setLoading(false);
+      })
+      .catch(e => {
+        console.error("Error conectando a FastAPI:", e);
+        setLoading(false);
+      });
   }, []);
 
-  const resultadoOperacional =
-    mpmData.find((r) => r.Concepto?.includes("Resultado Operacional"))
-      ?.Monto ?? 0;
-  const ebitdaAjustado =
-    mpmData.find((r) => r.Concepto?.includes("EBITDA Ajustado"))?.Monto ?? 0;
-  const deltaPct =
-    resultadoOperacional !== 0
-      ? ((ebitdaAjustado - resultadoOperacional) /
-          Math.abs(resultadoOperacional)) *
-        100
-      : 0;
+  const totalCost = useMemo(() => rawData.reduce((sum, item) => sum + item.costo, 0), [rawData]);
 
-  function clearDownstreamOfLevel2() {
-    setN3Agrup(null);
-    setN4Recurso(null);
-  }
+  const dims = useMemo(() => {
+    const group = rawData.reduce((acc, curr) => {
+      if (!curr.dimension) return acc;
+      acc[curr.dimension] = (acc[curr.dimension] || 0) + curr.costo;
+      return acc;
+    }, {});
+    return Object.entries(group).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
+  }, [rawData]);
 
-  function clearDownstreamOfLevel3() {
-    setN4Recurso(null);
-  }
+  const cedis = useMemo(() => {
+    if (!dim) return [];
+    const group = rawData.filter(d => d.dimension === dim).reduce((acc, curr) => {
+      acc[curr.cedi] = (acc[curr.cedi] || 0) + curr.costo;
+      return acc;
+    }, {});
+    return Object.entries(group).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
+  }, [rawData, dim]);
 
-  const branch = n1Mpm?.includes("Costos WMS")
-    ? BRANCH_WMS
-    : n1Mpm?.includes("Costos Corporativos")
-      ? BRANCH_CORP
-      : null;
+  const recursos = useMemo(() => {
+    if (!cedi) return [];
+    const group = rawData.filter(d => d.dimension === dim && d.cedi === cedi).reduce((acc, curr) => {
+      acc[curr.recurso] = (acc[curr.recurso] || 0) + curr.costo;
+      return acc;
+    }, {});
+    return Object.entries(group).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
+  }, [rawData, dim, cedi]);
 
-  const branchRows =
-    branch === BRANCH_WMS ? abcData : branch === BRANCH_CORP ? corpData : [];
+  const transacciones = useMemo(() => {
+    if (!recurso) return [];
+    return rawData.filter(d => d.dimension === dim && d.cedi === cedi && d.recurso === recurso);
+  }, [rawData, dim, cedi, recurso]);
 
-  const level2Groups = useMemo(() => {
-    if (branch === BRANCH_WMS) {
-      return groupSum(
-        branchRows,
-        (r) => r.DIMENSION_DRIVER,
-        (r) => r.COSTO_ASIGNADO_AL_OBJETO,
-      ).map((g) => ({ name: g.key, total: g.total }));
-    }
-    if (branch === BRANCH_CORP) {
-      return groupSum(
-        branchRows,
-        (r) => r.DESCRIPCION_RECURSO,
-        (r) => r.COSTO_ASIGNADO_AL_OBJETO,
-      ).map((g) => ({ name: g.key, total: g.total }));
-    }
-    return [];
-  }, [branch, branchRows]);
-
-  function handleLevel2RowClick(name) {
-    clearDownstreamOfLevel2();
-    setN2Dim(name);
-  }
-
-  const level2FilteredRows = useMemo(() => {
-    if (!n2Dim) return [];
-    const field =
-      branch === BRANCH_WMS ? "DIMENSION_DRIVER" : "DESCRIPCION_RECURSO";
-    return branchRows.filter((r) => r[field] === n2Dim);
-  }, [branch, branchRows, n2Dim]);
-
-  const level3Groups = useMemo(() => {
-    return groupSum(
-      level2FilteredRows,
-      (r) => `${r.periodo_mes}__${r.centro_costo_origen}`,
-      (r) => r.COSTO_ASIGNADO_AL_OBJETO,
-    ).map((g) => {
-      const [periodoMes, cedi] = g.key.split("__");
-      return { ...g, periodoMes, cedi };
-    });
-  }, [level2FilteredRows]);
-
-  function handleLevel3RowClick(periodoMes, cedi) {
-    clearDownstreamOfLevel3();
-    setN3Agrup({ periodoMes, cedi });
-  }
-
-  const level3FilteredRows = useMemo(() => {
-    if (!n3Agrup) return [];
-    return level2FilteredRows.filter(
-      (r) =>
-        r.periodo_mes === n3Agrup.periodoMes &&
-        r.centro_costo_origen === n3Agrup.cedi,
+  if (loading) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mb-4"></div>
+        <h2 className="text-xl font-semibold text-slate-700">Inicializando Motor Lakehouse...</h2>
+      </div>
     );
-  }, [level2FilteredRows, n3Agrup]);
-
-  const level4Groups = useMemo(() => {
-    return groupSum(
-      level3FilteredRows,
-      (r) => r.DESCRIPCION_RECURSO,
-      (r) => r.COSTO_ASIGNADO_AL_OBJETO,
-    );
-  }, [level3FilteredRows]);
-
-  function handleLevel4RowClick(descripcionRecurso) {
-    setN4Recurso(descripcionRecurso);
   }
-
-  const level5Rows = useMemo(() => {
-    if (!n4Recurso) return [];
-    return level3FilteredRows.filter(
-      (r) => r.DESCRIPCION_RECURSO === n4Recurso,
-    );
-  }, [level3FilteredRows, n4Recurso]);
-
-  function resetAll() {
-    setN1Mpm(null);
-    setN2Dim(null);
-    setN3Agrup(null);
-    setN4Recurso(null);
-  }
-
-  const branchLabel =
-    branch === BRANCH_WMS
-      ? "Costos WMS"
-      : branch === BRANCH_CORP
-        ? "Costos Corporativos"
-        : "";
-
-  const anyDrillDownActive = n1Mpm || n2Dim || n3Agrup || n4Recurso;
 
   return (
-    <main className="max-w-5xl mx-auto p-6 space-y-6">
-      <Flex justifyContent="between" alignItems="center">
+    <div className="min-h-screen bg-slate-50 text-slate-800 font-sans">
+      <header className="bg-white border-b border-slate-200 px-8 py-6 shadow-sm flex justify-between items-center">
         <div>
-          <Title>CFO: Rentabilidad ABC &amp; IFRS 18</Title>
-          <Subtitle>
-            Puente MPM con drill-down operativo de 5 niveles
-          </Subtitle>
+          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Financial Intelligence Center</h1>
+          <p className="text-sm text-slate-500 font-medium">Motor de Costeo ABC & IFRS 18</p>
         </div>
-        {anyDrillDownActive && (
-          <Button icon={ArrowLeft} variant="secondary" onClick={resetAll}>
-            Resetear Cascada
-          </Button>
-        )}
-      </Flex>
+        <div className="text-right">
+          <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-1">Costo Logístico Total Analizado</p>
+          <p className="text-3xl font-extrabold text-red-600">{formatUSD(totalCost)}</p>
+        </div>
+      </header>
 
-      <div data-testid="level1-section">
-        <Card>
-          <Flex justifyContent="between" alignItems="center">
-            <Title>Nivel 1: Puente MPM</Title>
-            <BadgeDelta deltaType={deltaPct >= 0 ? "increase" : "decrease"}>
-              {`${unit(deltaPct)}% EBITDA Ajustado vs. Resultado Operacional`}
-            </BadgeDelta>
-          </Flex>
-          <Text className="mt-1">Montos en USD (moneda grupo)</Text>
-          {dataReady ? (
-            <div data-testid="level1-chart">
-              <BarChart
-                className="mt-6"
-                data={mpmData}
-                index="Concepto"
-                categories={["Monto"]}
-                colors={["blue"]}
-                valueFormatter={money}
-                onValueChange={(v) => {
-                  if (v) {
-                    setN1Mpm(v.category || v.Concepto || v.name);
-                    setN2Dim(null);
-                    setN3Agrup(null);
-                    setN4Recurso(null);
-                  }
-                }}
-                showLegend={false}
-                intervalType={0}
-                yAxisWidth={90}
-                rotateLabelX={{ angle: -15, verticalShift: 10, xAxisHeight: 50 }}
-              />
-            </div>
-          ) : (
-            <Text className="mt-6" data-testid="level1-loading">
-              Cargando datos del Lakehouse...
-            </Text>
-          )}
-        </Card>
-      </div>
-
-      {n1Mpm && (
-        <div data-testid="level2-section">
-          <Card>
-            <Title>Nivel 2: Dimensiones de {branchLabel}</Title>
-            <Text className="mt-1">Montos en CLP nominal</Text>
-            <Grid numItemsSm={1} numItemsLg={2} className="gap-4 mt-4">
-              <div data-testid="level2-chart">
-                <DonutChart
-                  data={level2Groups}
-                  category="total"
-                  index="name"
-                  valueFormatter={money}
-                  colors={DONUT_COLORS}
-                  onValueChange={(v) => {
-                    if (v) {
-                      setN2Dim(v.name || v.DIMENSION_DRIVER || v.category);
-                      setN3Agrup(null);
-                      setN4Recurso(null);
-                    }
-                  }}
-                />
-              </div>
-              <div data-testid="level2-table">
-                <Table>
-                  <TableHead>
-                    <TableRow>
-                      <TableHeaderCell>Dimension</TableHeaderCell>
-                      <TableHeaderCell className="text-right">
-                        Costo Total
-                      </TableHeaderCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {level2Groups.map((g) => (
-                      <TableRow
-                        key={g.name}
-                        className={`cursor-pointer hover:bg-tremor-background-muted ${
-                          n2Dim === g.name ? "bg-tremor-background-muted" : ""
-                        }`}
-                        onClick={() => handleLevel2RowClick(g.name)}
-                      >
-                        <TableCell>{g.name}</TableCell>
-                        <TableCell className="text-right">
-                          {money(g.total)}
-                        </TableCell>
-                      </TableRow>
+      <main className="p-8 max-w-[1600px] mx-auto space-y-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="col-span-1 lg:col-span-2 bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+            <h2 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-4">Distribución por Driver de Actividad</h2>
+            <div className="h-64">
+              <ResponsiveContainer height="100%" width="100%">
+                <BarChart data={dims} margin={{ left: 20 }}>
+                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} />
+                  <YAxis tickFormatter={(v) => `$${v/1000}k`} axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} />
+                  <Tooltip cursor={{fill: '#f1f5f9'}} formatter={(value) => formatUSD(value)} contentStyle={{borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'}} />
+                  <Bar dataKey="value" radius={[4, 4, 0, 0]}>
+                    {dims.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={dim === entry.name ? '#4f46e5' : '#94a3b8'} className="transition-all duration-300"/>
                     ))}
-                  </TableBody>
-                </Table>
-              </div>
-            </Grid>
-          </Card>
-        </div>
-      )}
-
-      {n2Dim && (
-        <div data-testid="level3-section">
-          <Card>
-            <Title>Nivel 3: Agrupacion Tactica ({n2Dim})</Title>
-            <div data-testid="level3-table">
-              <Table className="mt-4">
-                <TableHead>
-                  <TableRow>
-                    <TableHeaderCell>Periodo</TableHeaderCell>
-                    <TableHeaderCell>CEDI</TableHeaderCell>
-                    <TableHeaderCell className="text-right">
-                      Costo Total
-                    </TableHeaderCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {level3Groups.map((g) => (
-                    <TableRow
-                      key={g.key}
-                      className="cursor-pointer hover:bg-tremor-background-muted"
-                      onClick={() =>
-                        handleLevel3RowClick(g.periodoMes, g.cedi)
-                      }
-                    >
-                      <TableCell>{g.periodoMes}</TableCell>
-                      <TableCell>{g.cedi}</TableCell>
-                      <TableCell className="text-right">
-                        {money(g.total)}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
             </div>
-          </Card>
-        </div>
-      )}
+          </div>
 
-      {n3Agrup && (
-        <div data-testid="level4-section">
-          <Card>
-            <Title>
-              Nivel 4: Recurso ({n3Agrup.periodoMes} - {n3Agrup.cedi})
-            </Title>
-            <div data-testid="level4-table">
-              <Table className="mt-4">
-                <TableHead>
-                  <TableRow>
-                    <TableHeaderCell>Recurso</TableHeaderCell>
-                    <TableHeaderCell className="text-right">
-                      Costo Total
-                    </TableHeaderCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {level4Groups.map((g) => (
-                    <TableRow
-                      key={g.key}
-                      className="cursor-pointer hover:bg-tremor-background-muted"
-                      onClick={() => handleLevel4RowClick(g.key)}
-                    >
-                      <TableCell>{g.key}</TableCell>
-                      <TableCell className="text-right">
-                        {money(g.total)}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+          <div className="col-span-1 bg-gradient-to-br from-indigo-900 to-slate-900 rounded-xl shadow-sm p-6 text-white flex flex-col justify-between">
+            <div>
+              <h2 className="text-indigo-200 font-medium text-sm tracking-wide uppercase mb-2">Estado del Pipeline</h2>
+              <p className="text-2xl font-semibold">Databricks Serverless</p>
+              <p className="text-sm text-indigo-300 mt-2">Catálogo: <span className="font-mono bg-indigo-950 px-2 py-1 rounded">mi_test_catalogo</span></p>
             </div>
-          </Card>
+            <div className="mt-8 border-t border-indigo-800 pt-6">
+              <p className="text-indigo-200 text-sm mb-1">Volumen Transaccional Procesado</p>
+              <p className="text-3xl font-bold">{new Intl.NumberFormat('en-US').format(rawData.length)} <span className="text-lg font-normal text-indigo-400">filas</span></p>
+            </div>
+          </div>
         </div>
-      )}
 
-      {n4Recurso && (
-        <div data-testid="level5-section">
-          <Card>
-            <Title>Nivel 5: Detalle Transaccional ({n4Recurso})</Title>
-            <div data-testid="level5-table">
-              <Table className="mt-4">
-                <TableHead>
-                  <TableRow>
-                    <TableHeaderCell>Fecha</TableHeaderCell>
-                    <TableHeaderCell>SKU</TableHeaderCell>
-                    <TableHeaderCell>Pedido</TableHeaderCell>
-                    <TableHeaderCell className="text-right">
-                      Cantidad Consumida
-                    </TableHeaderCell>
-                    <TableHeaderCell className="text-right">
-                      Costo Asignado
-                    </TableHeaderCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {level5Rows.map((row, index) => (
-                    <TableRow
-                      key={`${row.sku ?? row.DESCRIPCION_RECURSO}-${row.fecha ?? row.periodo_mes}-${index}`}
-                    >
-                      <TableCell>{row.fecha ?? "-"}</TableCell>
-                      <TableCell>{row.sku ?? "-"}</TableCell>
-                      <TableCell>{row.pedido ?? "-"}</TableCell>
-                      <TableCell className="text-right">
-                        {unit(row.cantidad_consumida)}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {money(row.COSTO_ASIGNADO_AL_OBJETO)}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+          <div className="bg-slate-100 px-6 py-4 border-b border-slate-200 flex justify-between items-center">
+            <h2 className="text-sm font-bold text-slate-700 uppercase tracking-wider">Explorador de Causa Raíz (Drill-Down)</h2>
+            <button
+              onClick={() => { setDim(null); setCedi(null); setRecurso(null); }}
+              className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 transition-colors"
+            >
+              Resetear Filtros
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-slate-200 h-[400px]">
+            <div className="overflow-y-auto bg-white">
+              <div className="p-3 bg-slate-50 border-b border-slate-200 text-xs font-bold text-slate-500 uppercase sticky top-0">1. Dimensión WMS</div>
+              <ul className="p-2 space-y-1">
+                {dims.map((d) => (
+                  <li key={d.name} onClick={() => { setDim(d.name); setCedi(null); setRecurso(null); }}
+                      className={`flex justify-between items-center p-3 rounded cursor-pointer transition-colors ${dim === d.name ? 'bg-indigo-50 border border-indigo-200 shadow-sm' : 'hover:bg-slate-50 border border-transparent'}`}>
+                    <span className={`font-medium ${dim === d.name ? 'text-indigo-700' : 'text-slate-700'}`}>{d.name}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-slate-500">{formatUSD(d.value)}</span>
+                      {dim === d.name && <ChevronRight/>}
+                    </div>
+                  </li>
+                ))}
+              </ul>
             </div>
-          </Card>
+
+            <div className="overflow-y-auto bg-slate-50/50">
+              <div className="p-3 bg-slate-50 border-b border-slate-200 text-xs font-bold text-slate-500 uppercase sticky top-0">2. Centro de Costo (CEDI)</div>
+              {dim ? (
+                <ul className="p-2 space-y-1">
+                  {cedis.map((c) => (
+                    <li key={c.name} onClick={() => { setCedi(c.name); setRecurso(null); }}
+                        className={`flex justify-between items-center p-3 rounded cursor-pointer transition-colors ${cedi === c.name ? 'bg-indigo-50 border border-indigo-200 shadow-sm' : 'hover:bg-white border border-transparent shadow-sm'}`}>
+                      <span className={`font-medium text-sm ${cedi === c.name ? 'text-indigo-700' : 'text-slate-700'}`}>{c.name}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-slate-500">{formatUSD(c.value)}</span>
+                        {cedi === c.name && <ChevronRight/>}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <div className="h-full flex items-center justify-center text-sm text-slate-400">Selecciona una dimensión</div>
+              )}
+            </div>
+
+            <div className="overflow-y-auto bg-slate-50/80">
+              <div className="p-3 bg-slate-50 border-b border-slate-200 text-xs font-bold text-slate-500 uppercase sticky top-0">3. Recurso Operativo</div>
+              {cedi ? (
+                <ul className="p-2 space-y-1">
+                  {recursos.map((r) => (
+                    <li key={r.name} onClick={() => setRecurso(r.name)}
+                        className={`flex justify-between items-center p-3 rounded cursor-pointer transition-colors ${recurso === r.name ? 'bg-indigo-600 text-white shadow-md' : 'hover:bg-white bg-white border border-slate-100 shadow-sm'}`}>
+                      <span className={`font-medium text-sm truncate pr-2 ${recurso === r.name ? 'text-white' : 'text-slate-700'}`}>{r.name.replace(/_/g, ' ')}</span>
+                      <span className={`text-xs font-bold whitespace-nowrap ${recurso === r.name ? 'text-indigo-100' : 'text-slate-500'}`}>{formatUSD(r.value)}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <div className="h-full flex items-center justify-center text-sm text-slate-400">Selecciona un CEDI</div>
+              )}
+            </div>
+          </div>
         </div>
-      )}
-    </main>
+
+        {recurso && (
+          <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+             <div className="bg-slate-900 px-6 py-4 flex justify-between items-center">
+                <h2 className="text-sm font-bold text-white uppercase tracking-wider">Auditoría Transaccional</h2>
+                <span className="px-3 py-1 bg-slate-800 text-indigo-300 text-xs font-bold rounded-full border border-slate-700">
+                  {transacciones.length} registros encontrados
+                </span>
+             </div>
+             <div className="overflow-x-auto max-h-96">
+                <table className="min-w-full divide-y divide-slate-200">
+                  <thead className="bg-slate-50 sticky top-0 shadow-sm">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase">SKU / Producto</th>
+                      <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase">Pedido / Order</th>
+                      <th className="px-6 py-3 text-right text-xs font-bold text-slate-500 uppercase">Volumen Consumido</th>
+                      <th className="px-6 py-3 text-right text-xs font-bold text-slate-500 uppercase">Impacto Asignado ($)</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-slate-100">
+                    {transacciones.slice(0, 100).map((t, i) => (
+                      <tr key={i} className="hover:bg-slate-50 transition-colors">
+                        <td className="px-6 py-3 whitespace-nowrap text-sm font-medium text-slate-900">{t.sku}</td>
+                        <td className="px-6 py-3 whitespace-nowrap text-sm text-slate-500">{t.pedido}</td>
+                        <td className="px-6 py-3 whitespace-nowrap text-sm text-right text-slate-600">{t.cantidad.toFixed(2)}</td>
+                        <td className="px-6 py-3 whitespace-nowrap text-sm text-right font-bold text-red-600">{formatUSD(t.costo)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+             </div>
+          </div>
+        )}
+      </main>
+    </div>
   );
 }
