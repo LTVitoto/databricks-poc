@@ -76,42 +76,46 @@ export default function CfoDashboard() {
         </button>
       )}
 
-      <section style={{ marginBottom: 32 }}>
+      <section style={{ marginBottom: 32 }} data-testid="level1-section">
         <h2>Nivel 1: Puente MPM</h2>
-        <ResponsiveContainer width="100%" height={300}>
-          <BarChart data={mpmData} onClick={handleMpmClick}>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="concepto" tick={{ fontSize: 11 }} />
-            <YAxis />
-            <Tooltip />
-            <Bar dataKey="monto" fill="#2563eb" cursor="pointer" />
-          </BarChart>
-        </ResponsiveContainer>
+        <div data-testid="level1-chart">
+          <ResponsiveContainer width="100%" height={300}>
+            <BarChart data={mpmData} onClick={handleMpmClick}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="concepto" tick={{ fontSize: 11 }} />
+              <YAxis />
+              <Tooltip />
+              <Bar dataKey="monto" fill="#2563eb" cursor="pointer" />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
       </section>
 
       {showLevel2 && (
-        <section style={{ marginBottom: 32 }}>
+        <section style={{ marginBottom: 32 }} data-testid="level2-section">
           <h2>Nivel 2: Dimensiones ABC ({selectedMpm})</h2>
-          <ResponsiveContainer width="100%" height={300}>
-            <BarChart
-              data={dimensionSummary}
-              layout="vertical"
-              onClick={handleAbcClick}
-            >
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis type="number" />
-              <YAxis type="category" dataKey="dimension_driver" width={140} />
-              <Tooltip />
-              <Bar dataKey="costo_total" fill="#16a34a" cursor="pointer" />
-            </BarChart>
-          </ResponsiveContainer>
+          <div data-testid="level2-chart">
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart
+                data={dimensionSummary}
+                layout="vertical"
+                onClick={handleAbcClick}
+              >
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis type="number" />
+                <YAxis type="category" dataKey="dimension_driver" width={140} />
+                <Tooltip />
+                <Bar dataKey="costo_total" fill="#16a34a" cursor="pointer" />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
         </section>
       )}
 
       {selectedAbc && (
-        <section>
+        <section data-testid="level3-section">
           <h2>Nivel 3: Causa Raiz Operativa ({selectedAbc})</h2>
-          <table>
+          <table data-testid="level3-table">
             <thead>
               <tr>
                 <th>Fecha</th>

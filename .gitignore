@@ -23,5 +23,10 @@ connect-plugins/
 node_modules/
 .next/
 
+# Playwright E2E
+/frontend/test-results/
+/frontend/playwright-report/
+/frontend/blob-report/
+
 # Misceláneos OS / editor
 .DS_Store
