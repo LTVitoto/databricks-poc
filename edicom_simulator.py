@@ -73,6 +73,16 @@ def random_lote(fecha: date) -> str:
     return f"L{fecha.strftime('%y%m')}{random.randint(100, 999)}"
 
 
+BAD_CODE_RATE = float(os.environ.get("EDICOM_BAD_CODE_RATE", "0.08"))
+
+
+def maybe_corrupt(code: str) -> str:
+    """Simula codigos de socio EDI sin homologar en las tablas maestras."""
+    if random.random() < BAD_CODE_RATE:
+        return str(random.randint(10**12, 10**13 - 1))
+    return code
+
+
 def generate_day_messages(fecha: date) -> list[dict[str, Any]]:
     n_messages = random.randint(*MESSAGES_PER_DAY_RANGE)
     messages = []
@@ -80,8 +90,8 @@ def generate_day_messages(fecha: date) -> list[dict[str, Any]]:
         punto = random.choice(PUNTOS_VENTA)
         messages.append(
             {
-                "gln": punto.gln,
-                "ean13": random.choice(EANS),
+                "gln": maybe_corrupt(punto.gln),
+                "ean13": maybe_corrupt(random.choice(EANS)),
                 "cantidad_blisters": random.randint(1, 50),
                 "lote": random_lote(fecha),
                 "fecha": fecha.isoformat(),

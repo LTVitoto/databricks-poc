@@ -99,7 +99,7 @@ services:
       - MINIO_ACCESS_KEY=minioadmin
       - MINIO_SECRET_KEY=minioadmin
       - MINIO_BUCKET=landing-zone
-      - MINIO_PREFIX=topics/
+      - MINIO_PREFIX=
       - DATABRICKS_VOLUME_ROOT=dbfs:/Volumes/mi_test_catalogo/default/paquet_demo
       - DATABRICKS_CLI_PROFILE=DEFAULT
       - SYNC_POLL_INTERVAL=10

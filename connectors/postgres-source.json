@@ -1,5 +1,5 @@
 {
-  "name": "PostgresConnectorFull2",
+  "name": "PostgresConnectorFull3",
   "config": {
     "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
     "tasks.max": "1",
@@ -9,9 +9,9 @@
     "database.password": "sappassword",
     "database.dbname": "sapdb",
     "topic.prefix": "sap",
-    "table.include.list": "public.sap_clientes_kna1,public.vbrk,public.vbrp,public.acdoca,public.ifrs18_fsv_map,public.farma_sell_in,public.map_sku,public.map_cedi",
+    "table.include.list": "public.sap_clientes_kna1,public.vbrk,public.vbrp,public.acdoca,public.ifrs18_fsv_map,public.farma_sell_in,public.map_sku,public.map_cedi,public.wms_telemetry",
     "plugin.name": "pgoutput",
-    "slot.name": "debezium_full_slot2",
+    "slot.name": "debezium_full_slot3",
     "publication.autocreate.mode": "filtered",
     "tombstones.on.delete": "false",
     "key.converter": "org.apache.kafka.connect.json.JsonConverter",
