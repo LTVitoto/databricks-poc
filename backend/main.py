@@ -1,15 +1,22 @@
 """FastAPI backend para la Data App del CFO (Rentabilidad ABC & IFRS 18).
 
-Expone `/api/mpm` y `/api/abc-costs` consultando en vivo las tablas Gold del
-Lakehouse via `databricks.sql.connect` (sin datos de prueba).
+Expone `/api/mpm`, `/api/abc-costs` y `/api/corporate-costs` consultando en
+vivo las tablas Gold/Silver del Lakehouse via `databricks.sql.connect` (sin
+datos de prueba).
 
 `/api/abc-costs` hace JOIN con `silver_maestro_drivers_abc` para traer el
 codigo real de `DIMENSION_DRIVER` (1_TIEMPO_OPERATIVO/3_MOVIMIENTO_TRANS/
 4_VOLUMEN_UNIDADES): `gold_abc_operational_costs.dimension_driver` guarda el
 nombre WMS (Segundos_Efectivos/...), no el codigo del maestro que el
-frontend agrupa/filtra en el drill-down de Nivel 2/3. `fecha` se reconstruye
-con `DATE_ADD` porque esta persistida como INT (dias desde epoch, el mismo
-patron de codificacion de Debezium) en `silver_wms_telemetry`.
+frontend agrupa/filtra en el drill-down de Nivel 2+. `fecha`/`periodo_mes`
+se reconstruyen con `DATE_ADD`/`DATE_FORMAT` porque `fecha` esta persistida
+como INT (dias desde epoch, el mismo patron de codificacion de Debezium) en
+`silver_wms_telemetry`.
+
+`/api/corporate-costs` lee directo `silver_maestro_drivers_abc` filtrado a
+`CL_CORP`: esas filas no tienen contraparte en `gold_abc_operational_costs`
+(gasto estrategico de presupuesto, no transaccional WMS), por eso el
+drill-down de Costos Corporativos usa una fuente separada de Costos WMS.
 """
 
 import os
@@ -37,11 +44,22 @@ SQL_ABC_COSTS = """SELECT d.DIMENSION_DRIVER AS DIMENSION_DRIVER,
     a.costo_asignado_linea AS COSTO_ASIGNADO_AL_OBJETO,
     a.centro_costo_origen AS centro_costo_origen,
     a.cantidad_consumida AS cantidad_consumida,
-    DATE_ADD(DATE('1970-01-01'), a.fecha) AS fecha
+    a.sku AS sku,
+    a.pedido AS pedido,
+    DATE_ADD(DATE('1970-01-01'), a.fecha) AS fecha,
+    DATE_FORMAT(DATE_ADD(DATE('1970-01-01'), a.fecha), 'yyyy-MM') AS periodo_mes
 FROM default.gold_abc_operational_costs a
 JOIN default.silver_maestro_drivers_abc d
   ON a.centro_costo_origen = d.CENTRO_COSTO_ORIGEN
  AND a.id_recurso_pool = d.ID_RECURSO_POOL"""
+
+SQL_CORP_COSTS = """SELECT PERIODO_MES AS periodo_mes,
+    DIMENSION_DRIVER AS DIMENSION_DRIVER,
+    DESCRIPCION_RECURSO AS DESCRIPCION_RECURSO,
+    CENTRO_COSTO_ORIGEN AS centro_costo_origen,
+    COSTO_ASIGNADO_AL_OBJETO AS COSTO_ASIGNADO_AL_OBJETO
+FROM default.silver_maestro_drivers_abc
+WHERE CENTRO_COSTO_ORIGEN = 'CL_CORP'"""
 
 app = FastAPI(title="CFO Dashboard API")
 
@@ -87,3 +105,8 @@ def get_mpm_bridge():
 @app.get("/api/abc-costs")
 def get_abc_costs():
     return run_query(SQL_ABC_COSTS)
+
+
+@app.get("/api/corporate-costs")
+def get_corporate_costs():
+    return run_query(SQL_CORP_COSTS)

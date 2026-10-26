@@ -1,3 +1,7 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 * {
   box-sizing: border-box;
 }
@@ -12,21 +16,4 @@ body {
     sans-serif;
   background-color: #f8fafc;
   color: #0f172a;
-}
-
-table {
-  border-collapse: collapse;
-  width: 100%;
-}
-
-th,
-td {
-  border: 1px solid #e2e8f0;
-  padding: 8px 12px;
-  text-align: left;
-  font-size: 14px;
-}
-
-th {
-  background-color: #f1f5f9;
 }
