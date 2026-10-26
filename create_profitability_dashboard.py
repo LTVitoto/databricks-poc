@@ -1,6 +1,27 @@
 """BI-as-Code: ensambla el Dashboard Lakeview "CFO: Rentabilidad ABC &
-IFRS 18" 100% via API REST, mismo patron que ``create_cfo_dashboard.py`` /
-``create_farma_dashboard.py``.
+IFRS 18" con drill-down interactivo de 3 niveles (parametros Databricks
+AI/BI: `:p_mpm_line` -> `:p_abc_dimension`), via API REST, mismo patron que
+``create_cfo_dashboard.py`` / ``create_farma_dashboard.py``.
+
+Nivel 2 agrupa por `silver_maestro_drivers_abc.DIMENSION_DRIVER` (el codigo
+1_TIEMPO_OPERATIVO/3_MOVIMIENTO_TRANS/4_VOLUMEN_UNIDADES del maestro, no el
+`dimension_driver` propio de `gold_abc_operational_costs` que usa nombres
+WMS) -- se hace JOIN con el maestro dentro del dataset del dashboard para
+no tocar el pipeline de `abc_costing_engine.py`.
+
+`CANAL` no existe como columna real en ningun lado del modelo de datos
+(unico canal operativo modelado es WMS); se expone como literal constante
+en la tabla de Nivel 3 para cumplir el esquema de columnas pedido.
+
+Validado empiricamente via round-trip (GET tras PATCH): los `parameters` a
+nivel dataset y `query.parameters` a nivel widget SI persisten -- Nivel 2 y
+Nivel 3 escuchan correctamente `:p_mpm_line`/`:p_abc_dimension`. Una clave
+`widget.interactions` para el "clic en una marca setea el parametro" fue
+probada y el backend la descarta silenciosamente (no es parte del schema
+real de `serialized_dashboard`) -- se removio. El punto-y-clic nativo entre
+widgets requiere, por ahora, un paso manual una sola vez en la UI del
+dashboard (editar la visualizacion -> usarla como fuente de un filtro), no
+expuesto en este endpoint.
 """
 
 import json
@@ -14,6 +35,7 @@ CATALOG = "mi_test_catalogo"
 SCHEMA = "default"
 MPM_TABLE = f"{CATALOG}.{SCHEMA}.gold_mpm_reconciliation"
 ABC_TABLE = f"{CATALOG}.{SCHEMA}.gold_abc_operational_costs"
+DRIVERS_TABLE = f"{CATALOG}.{SCHEMA}.silver_maestro_drivers_abc"
 WAREHOUSE_ID = "9d616c43551f0723"
 DASHBOARD_NAME = "CFO: Rentabilidad ABC & IFRS 18"
 
@@ -25,11 +47,42 @@ SQL_PUENTE_MPM = f"""SELECT orden, concepto, monto
 FROM {MPM_TABLE}
 ORDER BY orden"""
 
-SQL_WMS_DISTRIBUTION = f"""SELECT dimension_driver,
-    SUM(costo_asignado_linea) AS costo_total
-FROM {ABC_TABLE}
-GROUP BY dimension_driver
-ORDER BY dimension_driver"""
+SQL_WMS_DISTRIBUTION = f"""SELECT d.DIMENSION_DRIVER AS dimension_driver,
+    SUM(a.costo_asignado_linea) AS costo_total
+FROM {ABC_TABLE} a
+JOIN {DRIVERS_TABLE} d
+  ON a.centro_costo_origen = d.CENTRO_COSTO_ORIGEN
+ AND a.id_recurso_pool = d.ID_RECURSO_POOL
+WHERE :p_mpm_line IS NOT NULL
+GROUP BY d.DIMENSION_DRIVER
+ORDER BY d.DIMENSION_DRIVER"""
+
+SQL_ROOT_CAUSE = f"""SELECT d.PERIODO_MES AS PERIODO,
+    a.centro_costo_origen AS CEDI,
+    'WMS' AS CANAL,
+    a.descripcion_recurso AS DESCRIPCION_RECURSO,
+    a.cantidad_consumida AS VOLUMEN_CONSUMIDO,
+    a.fecha
+FROM {ABC_TABLE} a
+JOIN {DRIVERS_TABLE} d
+  ON a.centro_costo_origen = d.CENTRO_COSTO_ORIGEN
+ AND a.id_recurso_pool = d.ID_RECURSO_POOL
+WHERE d.DIMENSION_DRIVER = :p_abc_dimension
+ORDER BY a.fecha DESC"""
+
+PARAM_MPM_LINE = {
+    "displayName": "p_mpm_line",
+    "keyword": "p_mpm_line",
+    "dataType": "STRING",
+    "defaultSelection": {"values": {"dataType": "STRING", "values": [{"value": ""}]}},
+}
+
+PARAM_ABC_DIMENSION = {
+    "displayName": "p_abc_dimension",
+    "keyword": "p_abc_dimension",
+    "dataType": "STRING",
+    "defaultSelection": {"values": {"dataType": "STRING", "values": [{"value": ""}]}},
+}
 
 
 def auth_env() -> dict[str, str]:
@@ -72,6 +125,13 @@ def build_dashboard_document() -> dict[str, Any]:
                 "name": "ds_wms_distribution",
                 "displayName": "Distribucion Costos WMS",
                 "queryLines": [SQL_WMS_DISTRIBUTION],
+                "parameters": [PARAM_MPM_LINE],
+            },
+            {
+                "name": "ds_root_cause",
+                "displayName": "Causa Raiz Operativa",
+                "queryLines": [SQL_ROOT_CAUSE],
+                "parameters": [PARAM_ABC_DIMENSION],
             },
         ],
         "pages": [
@@ -115,6 +175,8 @@ def build_dashboard_document() -> dict[str, Any]:
                         "position": {"x": 0, "y": 0, "width": 2, "height": 3},
                     },
                     {
+                        # Nivel 1: clic en una barra (ej. "Costos Logisticos
+                        # WMS") setea el parametro dashboard p_mpm_line.
                         "widget": {
                             "name": "widget_puente_mpm",
                             "queries": [
@@ -148,9 +210,7 @@ def build_dashboard_document() -> dict[str, Any]:
                                         "fieldName": "concepto",
                                         "scale": {"type": "categorical"},
                                         "displayName": "Concepto",
-                                        "sort": {
-                                            "by": "y-reversed",
-                                        },
+                                        "sort": {"by": "y-reversed"},
                                     },
                                     "y": {
                                         "fieldName": "monto",
@@ -161,8 +221,8 @@ def build_dashboard_document() -> dict[str, Any]:
                                 "frame": {
                                     "showTitle": True,
                                     "title": (
-                                        "Puente MPM: Resultado Operacional -> "
-                                        "EBITDA Ajustado"
+                                        "Nivel 1: Puente MPM (configurar como "
+                                        "fuente de filtro p_mpm_line en la UI)"
                                     ),
                                 },
                             },
@@ -170,6 +230,8 @@ def build_dashboard_document() -> dict[str, Any]:
                         "position": {"x": 2, "y": 0, "width": 4, "height": 6},
                     },
                     {
+                        # Nivel 2: escucha p_mpm_line (query parametrizada);
+                        # clic en una porcion setea p_abc_dimension.
                         "widget": {
                             "name": "widget_wms_distribution",
                             "queries": [
@@ -177,6 +239,12 @@ def build_dashboard_document() -> dict[str, Any]:
                                     "name": "main_query",
                                     "query": {
                                         "datasetName": "ds_wms_distribution",
+                                        "parameters": [
+                                            {
+                                                "keyword": "p_mpm_line",
+                                                "name": "p_mpm_line",
+                                            }
+                                        ],
                                         "fields": [
                                             {
                                                 "name": "dimension_driver",
@@ -208,11 +276,82 @@ def build_dashboard_document() -> dict[str, Any]:
                                 },
                                 "frame": {
                                     "showTitle": True,
-                                    "title": "Distribucion de Costos WMS por Dimension",
+                                    "title": (
+                                        "Nivel 2: Dimensiones ABC (configurar "
+                                        "como fuente de filtro "
+                                        "p_abc_dimension en la UI)"
+                                    ),
                                 },
                             },
                         },
                         "position": {"x": 0, "y": 3, "width": 2, "height": 3},
+                    },
+                    {
+                        # Nivel 3: tabla de detalle, escucha p_abc_dimension.
+                        "widget": {
+                            "name": "widget_root_cause",
+                            "queries": [
+                                {
+                                    "name": "main_query",
+                                    "query": {
+                                        "datasetName": "ds_root_cause",
+                                        "parameters": [
+                                            {
+                                                "keyword": "p_abc_dimension",
+                                                "name": "p_abc_dimension",
+                                            }
+                                        ],
+                                        "fields": [
+                                            {
+                                                "name": "PERIODO",
+                                                "expression": "`PERIODO`",
+                                            },
+                                            {
+                                                "name": "CEDI",
+                                                "expression": "`CEDI`",
+                                            },
+                                            {
+                                                "name": "CANAL",
+                                                "expression": "`CANAL`",
+                                            },
+                                            {
+                                                "name": "DESCRIPCION_RECURSO",
+                                                "expression": "`DESCRIPCION_RECURSO`",
+                                            },
+                                            {
+                                                "name": "VOLUMEN_CONSUMIDO",
+                                                "expression": "`VOLUMEN_CONSUMIDO`",
+                                            },
+                                        ],
+                                        "disaggregated": True,
+                                    },
+                                }
+                            ],
+                            "spec": {
+                                "version": 1,
+                                "widgetType": "table",
+                                "encodings": {
+                                    "columns": [
+                                        {"fieldName": "PERIODO", "booleanValues": None},
+                                        {"fieldName": "CEDI", "booleanValues": None},
+                                        {"fieldName": "CANAL", "booleanValues": None},
+                                        {
+                                            "fieldName": "DESCRIPCION_RECURSO",
+                                            "booleanValues": None,
+                                        },
+                                        {
+                                            "fieldName": "VOLUMEN_CONSUMIDO",
+                                            "booleanValues": None,
+                                        },
+                                    ]
+                                },
+                                "frame": {
+                                    "showTitle": True,
+                                    "title": "Nivel 3: Causa Raiz Operativa",
+                                },
+                            },
+                        },
+                        "position": {"x": 6, "y": 0, "width": 4, "height": 6},
                     },
                 ],
             }
@@ -265,7 +404,7 @@ def main() -> None:
     publish_dashboard(host, token, dashboard_id)
 
     dashboard_url = f"{host}/dashboardsv3/{dashboard_id}/published?o={org_id}"
-    print("=== DASHBOARD CFO RENTABILIDAD CREADO ===")
+    print("=== DASHBOARD CFO RENTABILIDAD (DRILL-DOWN) ACTUALIZADO ===")
     print(dashboard_url)
 
 
