@@ -19,8 +19,8 @@ const API_BASE =
 export default function CfoDashboard() {
   const [mpmData, setMpmData] = useState([]);
   const [abcData, setAbcData] = useState([]);
-  const [selectedMpmLine, setSelectedMpmLine] = useState(null);
-  const [selectedDimension, setSelectedDimension] = useState(null);
+  const [selectedMpm, setSelectedMpm] = useState(null);
+  const [selectedAbc, setSelectedAbc] = useState(null);
 
   useEffect(() => {
     axios.get(`${API_BASE}/api/mpm`).then((res) => setMpmData(res.data));
@@ -41,75 +41,76 @@ export default function CfoDashboard() {
 
   const rootCauseRows = useMemo(
     () =>
-      selectedDimension
-        ? abcData.filter((row) => row.dimension_driver === selectedDimension)
+      selectedAbc
+        ? abcData.filter((row) => row.dimension_driver === selectedAbc)
         : [],
-    [abcData, selectedDimension],
+    [abcData, selectedAbc],
   );
 
-  const showLevel2 =
-    selectedMpmLine !== null && selectedMpmLine.includes("Costos WMS");
+  const showLevel2 = selectedMpm !== null && selectedMpm.includes("Costos WMS");
 
-  function resetToLevel1() {
-    setSelectedMpmLine(null);
-    setSelectedDimension(null);
+  function handleMpmClick(chartEvent) {
+    if (chartEvent && chartEvent.activeLabel) {
+      setSelectedMpm(chartEvent.activeLabel);
+    }
   }
 
-  function resetToLevel2() {
-    setSelectedDimension(null);
+  function handleAbcClick(chartEvent) {
+    if (chartEvent && chartEvent.activeLabel) {
+      setSelectedAbc(chartEvent.activeLabel);
+    }
+  }
+
+  function resetFiltros() {
+    setSelectedMpm(null);
+    setSelectedAbc(null);
   }
 
   return (
     <main style={{ padding: 24, maxWidth: 960, margin: "0 auto" }}>
       <h1>CFO: Rentabilidad ABC &amp; IFRS 18</h1>
 
+      {(selectedMpm || selectedAbc) && (
+        <button onClick={resetFiltros} style={{ marginBottom: 16 }}>
+          <ArrowLeft size={14} /> Resetear Filtros
+        </button>
+      )}
+
       <section style={{ marginBottom: 32 }}>
         <h2>Nivel 1: Puente MPM</h2>
         <ResponsiveContainer width="100%" height={300}>
-          <BarChart data={mpmData}>
+          <BarChart data={mpmData} onClick={handleMpmClick}>
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis dataKey="concepto" tick={{ fontSize: 11 }} />
             <YAxis />
             <Tooltip />
-            <Bar
-              dataKey="monto"
-              fill="#2563eb"
-              cursor="pointer"
-              onClick={(data) => setSelectedMpmLine(data.concepto)}
-            />
+            <Bar dataKey="monto" fill="#2563eb" cursor="pointer" />
           </BarChart>
         </ResponsiveContainer>
       </section>
 
       {showLevel2 && (
         <section style={{ marginBottom: 32 }}>
-          <button onClick={resetToLevel1} style={{ marginBottom: 8 }}>
-            <ArrowLeft size={14} /> Volver al Puente MPM
-          </button>
-          <h2>Nivel 2: Dimensiones ABC ({selectedMpmLine})</h2>
+          <h2>Nivel 2: Dimensiones ABC ({selectedMpm})</h2>
           <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={dimensionSummary} layout="vertical">
+            <BarChart
+              data={dimensionSummary}
+              layout="vertical"
+              onClick={handleAbcClick}
+            >
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis type="number" />
               <YAxis type="category" dataKey="dimension_driver" width={140} />
               <Tooltip />
-              <Bar
-                dataKey="costo_total"
-                fill="#16a34a"
-                cursor="pointer"
-                onClick={(data) => setSelectedDimension(data.dimension_driver)}
-              />
+              <Bar dataKey="costo_total" fill="#16a34a" cursor="pointer" />
             </BarChart>
           </ResponsiveContainer>
         </section>
       )}
 
-      {selectedDimension && (
+      {selectedAbc && (
         <section>
-          <button onClick={resetToLevel2} style={{ marginBottom: 8 }}>
-            <ArrowLeft size={14} /> Volver a Dimensiones ABC
-          </button>
-          <h2>Nivel 3: Causa Raiz Operativa ({selectedDimension})</h2>
+          <h2>Nivel 3: Causa Raiz Operativa ({selectedAbc})</h2>
           <table>
             <thead>
               <tr>
