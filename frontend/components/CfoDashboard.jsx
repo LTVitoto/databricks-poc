@@ -62,10 +62,10 @@ export default function CfoDashboard() {
   const [corpData, setCorpData] = useState([]);
   const [dataReady, setDataReady] = useState(false);
 
-  const [selectedMpm, setSelectedMpm] = useState(null);
-  const [selectedDimension, setSelectedDimension] = useState(null);
-  const [selectedAgrupacion, setSelectedAgrupacion] = useState(null);
-  const [selectedRecurso, setSelectedRecurso] = useState(null);
+  const [n1Mpm, setN1Mpm] = useState(null);
+  const [n2Dim, setN2Dim] = useState(null);
+  const [n3Agrup, setN3Agrup] = useState(null);
+  const [n4Recurso, setN4Recurso] = useState(null);
 
   useEffect(() => {
     Promise.all([
@@ -89,68 +89,53 @@ export default function CfoDashboard() {
         100
       : 0;
 
-  function clearDownstreamOfLevel1() {
-    setSelectedDimension(null);
-    setSelectedAgrupacion(null);
-    setSelectedRecurso(null);
-  }
-
   function clearDownstreamOfLevel2() {
-    setSelectedAgrupacion(null);
-    setSelectedRecurso(null);
+    setN3Agrup(null);
+    setN4Recurso(null);
   }
 
   function clearDownstreamOfLevel3() {
-    setSelectedRecurso(null);
+    setN4Recurso(null);
   }
 
-  function handleMpmClick(dataPoint) {
-    clearDownstreamOfLevel1();
-    const concepto = dataPoint?.Concepto;
-    if (typeof concepto === "string" && concepto.includes("Costos WMS")) {
-      setSelectedMpm(BRANCH_WMS);
-    } else if (
-      typeof concepto === "string" &&
-      concepto.includes("Costos Corporativos")
-    ) {
-      setSelectedMpm(BRANCH_CORP);
-    } else {
-      setSelectedMpm(null);
-    }
-  }
+  const branch = n1Mpm?.includes("Costos WMS")
+    ? BRANCH_WMS
+    : n1Mpm?.includes("Costos Corporativos")
+      ? BRANCH_CORP
+      : null;
 
   const branchRows =
-    selectedMpm === BRANCH_WMS ? abcData : selectedMpm === BRANCH_CORP ? corpData : [];
+    branch === BRANCH_WMS ? abcData : branch === BRANCH_CORP ? corpData : [];
 
   const level2Groups = useMemo(() => {
-    if (selectedMpm === BRANCH_WMS) {
+    if (branch === BRANCH_WMS) {
       return groupSum(
         branchRows,
         (r) => r.DIMENSION_DRIVER,
         (r) => r.COSTO_ASIGNADO_AL_OBJETO,
-      );
+      ).map((g) => ({ name: g.key, total: g.total }));
     }
-    if (selectedMpm === BRANCH_CORP) {
+    if (branch === BRANCH_CORP) {
       return groupSum(
         branchRows,
         (r) => r.DESCRIPCION_RECURSO,
         (r) => r.COSTO_ASIGNADO_AL_OBJETO,
-      );
+      ).map((g) => ({ name: g.key, total: g.total }));
     }
     return [];
-  }, [selectedMpm, branchRows]);
+  }, [branch, branchRows]);
 
-  function handleLevel2RowClick(key) {
+  function handleLevel2RowClick(name) {
     clearDownstreamOfLevel2();
-    setSelectedDimension(key);
+    setN2Dim(name);
   }
 
   const level2FilteredRows = useMemo(() => {
-    if (!selectedDimension) return [];
+    if (!n2Dim) return [];
     const field =
-      selectedMpm === BRANCH_WMS ? "DIMENSION_DRIVER" : "DESCRIPCION_RECURSO";
-    return branchRows.filter((r) => r[field] === selectedDimension);
-  }, [selectedMpm, branchRows, selectedDimension]);
+      branch === BRANCH_WMS ? "DIMENSION_DRIVER" : "DESCRIPCION_RECURSO";
+    return branchRows.filter((r) => r[field] === n2Dim);
+  }, [branch, branchRows, n2Dim]);
 
   const level3Groups = useMemo(() => {
     return groupSum(
@@ -165,17 +150,17 @@ export default function CfoDashboard() {
 
   function handleLevel3RowClick(periodoMes, cedi) {
     clearDownstreamOfLevel3();
-    setSelectedAgrupacion({ periodoMes, cedi });
+    setN3Agrup({ periodoMes, cedi });
   }
 
   const level3FilteredRows = useMemo(() => {
-    if (!selectedAgrupacion) return [];
+    if (!n3Agrup) return [];
     return level2FilteredRows.filter(
       (r) =>
-        r.periodo_mes === selectedAgrupacion.periodoMes &&
-        r.centro_costo_origen === selectedAgrupacion.cedi,
+        r.periodo_mes === n3Agrup.periodoMes &&
+        r.centro_costo_origen === n3Agrup.cedi,
     );
-  }, [level2FilteredRows, selectedAgrupacion]);
+  }, [level2FilteredRows, n3Agrup]);
 
   const level4Groups = useMemo(() => {
     return groupSum(
@@ -186,29 +171,31 @@ export default function CfoDashboard() {
   }, [level3FilteredRows]);
 
   function handleLevel4RowClick(descripcionRecurso) {
-    setSelectedRecurso(descripcionRecurso);
+    setN4Recurso(descripcionRecurso);
   }
 
   const level5Rows = useMemo(() => {
-    if (!selectedRecurso) return [];
+    if (!n4Recurso) return [];
     return level3FilteredRows.filter(
-      (r) => r.DESCRIPCION_RECURSO === selectedRecurso,
+      (r) => r.DESCRIPCION_RECURSO === n4Recurso,
     );
-  }, [level3FilteredRows, selectedRecurso]);
+  }, [level3FilteredRows, n4Recurso]);
 
   function resetAll() {
-    setSelectedMpm(null);
-    clearDownstreamOfLevel1();
+    setN1Mpm(null);
+    setN2Dim(null);
+    setN3Agrup(null);
+    setN4Recurso(null);
   }
 
   const branchLabel =
-    selectedMpm === BRANCH_WMS
+    branch === BRANCH_WMS
       ? "Costos WMS"
-      : selectedMpm === BRANCH_CORP
+      : branch === BRANCH_CORP
         ? "Costos Corporativos"
         : "";
 
-  const anyDrillDownActive = selectedMpm || selectedDimension || selectedAgrupacion || selectedRecurso;
+  const anyDrillDownActive = n1Mpm || n2Dim || n3Agrup || n4Recurso;
 
   return (
     <main className="max-w-5xl mx-auto p-6 space-y-6">
@@ -221,7 +208,7 @@ export default function CfoDashboard() {
         </div>
         {anyDrillDownActive && (
           <Button icon={ArrowLeft} variant="secondary" onClick={resetAll}>
-            Resetear Filtros
+            Resetear Cascada
           </Button>
         )}
       </Flex>
@@ -244,7 +231,14 @@ export default function CfoDashboard() {
                 categories={["Monto"]}
                 colors={["blue"]}
                 valueFormatter={money}
-                onValueChange={handleMpmClick}
+                onValueChange={(v) => {
+                  if (v) {
+                    setN1Mpm(v.category || v.Concepto || v.name);
+                    setN2Dim(null);
+                    setN3Agrup(null);
+                    setN4Recurso(null);
+                  }
+                }}
                 showLegend={false}
                 intervalType={0}
                 yAxisWidth={90}
@@ -259,7 +253,7 @@ export default function CfoDashboard() {
         </Card>
       </div>
 
-      {selectedMpm && (
+      {n1Mpm && (
         <div data-testid="level2-section">
           <Card>
             <Title>Nivel 2: Dimensiones de {branchLabel}</Title>
@@ -269,10 +263,16 @@ export default function CfoDashboard() {
                 <DonutChart
                   data={level2Groups}
                   category="total"
-                  index="key"
+                  index="name"
                   valueFormatter={money}
                   colors={DONUT_COLORS}
-                  onValueChange={(v) => v && handleLevel2RowClick(v.key)}
+                  onValueChange={(v) => {
+                    if (v) {
+                      setN2Dim(v.name || v.DIMENSION_DRIVER || v.category);
+                      setN3Agrup(null);
+                      setN4Recurso(null);
+                    }
+                  }}
                 />
               </div>
               <div data-testid="level2-table">
@@ -288,15 +288,13 @@ export default function CfoDashboard() {
                   <TableBody>
                     {level2Groups.map((g) => (
                       <TableRow
-                        key={g.key}
+                        key={g.name}
                         className={`cursor-pointer hover:bg-tremor-background-muted ${
-                          selectedDimension === g.key
-                            ? "bg-tremor-background-muted"
-                            : ""
+                          n2Dim === g.name ? "bg-tremor-background-muted" : ""
                         }`}
-                        onClick={() => handleLevel2RowClick(g.key)}
+                        onClick={() => handleLevel2RowClick(g.name)}
                       >
-                        <TableCell>{g.key}</TableCell>
+                        <TableCell>{g.name}</TableCell>
                         <TableCell className="text-right">
                           {money(g.total)}
                         </TableCell>
@@ -310,10 +308,10 @@ export default function CfoDashboard() {
         </div>
       )}
 
-      {selectedDimension && (
+      {n2Dim && (
         <div data-testid="level3-section">
           <Card>
-            <Title>Nivel 3: Agrupacion Tactica ({selectedDimension})</Title>
+            <Title>Nivel 3: Agrupacion Tactica ({n2Dim})</Title>
             <div data-testid="level3-table">
               <Table className="mt-4">
                 <TableHead>
@@ -348,11 +346,11 @@ export default function CfoDashboard() {
         </div>
       )}
 
-      {selectedAgrupacion && (
+      {n3Agrup && (
         <div data-testid="level4-section">
           <Card>
             <Title>
-              Nivel 4: Recurso ({selectedAgrupacion.periodoMes} - {selectedAgrupacion.cedi})
+              Nivel 4: Recurso ({n3Agrup.periodoMes} - {n3Agrup.cedi})
             </Title>
             <div data-testid="level4-table">
               <Table className="mt-4">
@@ -384,10 +382,10 @@ export default function CfoDashboard() {
         </div>
       )}
 
-      {selectedRecurso && (
+      {n4Recurso && (
         <div data-testid="level5-section">
           <Card>
-            <Title>Nivel 5: Detalle Transaccional ({selectedRecurso})</Title>
+            <Title>Nivel 5: Detalle Transaccional ({n4Recurso})</Title>
             <div data-testid="level5-table">
               <Table className="mt-4">
                 <TableHead>
