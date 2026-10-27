@@ -45,8 +45,8 @@ DATABRICKS_CATALOG = os.environ.get("DATABRICKS_CATALOG", "mi_test_catalogo")
 DATABRICKS_SCHEMA = os.environ.get("DATABRICKS_SCHEMA", "default")
 DATABRICKS_MODEL_ENDPOINT = os.environ.get("DATABRICKS_MODEL_ENDPOINT")
 
-SQL_MPM = """SELECT Concepto, Monto
-FROM default.gold_mpm_reconciliation
+SQL_MPM = f"""SELECT Concepto, Monto
+FROM {DATABRICKS_CATALOG}.default.gold_mpm_reconciliation
 ORDER BY Concepto ASC"""
 
 SQL_ABC_COSTS = """SELECT d.DIMENSION_DRIVER AS DIMENSION_DRIVER,

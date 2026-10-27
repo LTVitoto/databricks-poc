@@ -88,9 +88,18 @@ export default function EnterpriseCFO() {
         body: JSON.stringify({ volumen_delta_pct: simParams.vol, costo_wms_delta_pct: simParams.wms, tasa_fx_clp_usd: simParams.fx })
       });
       const data = await res.json();
-      setSimResult(data);
+      if (!res.ok) {
+        alert(`Error del Servidor: ${data.detail || 'Error desconocido'}`);
+        setSimResult(null);
+      } else if (data.current_ebitda !== undefined) {
+        setSimResult(data);
+      } else {
+        setSimResult(null);
+      }
     } catch (e) {
       console.error(e);
+      alert(`Error de red: ${e.message}`);
+      setSimResult(null);
     }
     setIsSimulating(false);
   };
