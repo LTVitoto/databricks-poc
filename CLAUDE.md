@@ -4,6 +4,14 @@ PoC de integración CDC en tiempo real: PostgreSQL (simulador SAP S/4HANA) → D
 
 Rol operativo: Programador Principal (Senior SWE), bajo directrices del Arquitecto Líder de Datos. Restricción de comunicación: explicar arquitecturas/flujos SIEMPRE con diagramas `mermaid` (sequenceDiagram / graph TD), nunca con párrafos largos.
 
+## REGLAS DE COMUNICACIÓN Y QA
+
+A partir de ahora, por cada iteración, refactorización o tarea completada, tienes ESTRICTAMENTE PROHIBIDO responder únicamente con confirmaciones cortas o robóticas. Tu respuesta de salida debe estructurarse SIEMPRE con estos 3 puntos exactos:
+
+- **Qué se hizo:** Breve resumen técnico de los archivos modificados y la arquitectura o lógica implementada.
+- **Resultado Esperado:** Qué impacto tiene esto en el sistema (ej. nueva UI renderizada, payload de backend modificado).
+- **Cómo Validarlo (QA):** Instrucciones exactas, precisas y paso a paso para que el usuario valide el cambio localmente (ej. clics exactos en la UI, URLs a visitar, comandos curl para probar el backend, o qué métricas observar).
+
 ## Build & Run Commands
 
 ```bash
