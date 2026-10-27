@@ -17,11 +17,19 @@ como INT (dias desde epoch, el mismo patron de codificacion de Debezium) en
 `CL_CORP`: esas filas no tienen contraparte en `gold_abc_operational_costs`
 (gasto estrategico de presupuesto, no transaccional WMS), por eso el
 drill-down de Costos Corporativos usa una fuente separada de Costos WMS.
+
+`/api/simulate-ebitda` invoca un Model Serving endpoint real de Databricks
+(`DATABRICKS_MODEL_ENDPOINT`, formato `dataframe_split`). El EBITDA base ya
+no es un valor fijo: se lee la fila "EBITDA Ajustado" de
+`gold_mpm_reconciliation` en cada llamada. Requiere que el endpoint exista y
+este READY en el workspace; si `DATABRICKS_MODEL_ENDPOINT` no apunta a un
+endpoint real, la llamada falla con HTTP 500 (ver CLAUDE.md).
 """
 
 import os
 from typing import Any
 
+import requests
 from databricks import sql
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
@@ -35,6 +43,7 @@ DATABRICKS_HTTP_PATH = os.environ.get("DATABRICKS_HTTP_PATH")
 DATABRICKS_TOKEN = os.environ.get("DATABRICKS_TOKEN")
 DATABRICKS_CATALOG = os.environ.get("DATABRICKS_CATALOG", "mi_test_catalogo")
 DATABRICKS_SCHEMA = os.environ.get("DATABRICKS_SCHEMA", "default")
+DATABRICKS_MODEL_ENDPOINT = os.environ.get("DATABRICKS_MODEL_ENDPOINT")
 
 SQL_MPM = """SELECT Concepto, Monto
 FROM default.gold_mpm_reconciliation
@@ -61,14 +70,6 @@ SQL_CORP_COSTS = """SELECT PERIODO_MES AS periodo_mes,
     COSTO_ASIGNADO_AL_OBJETO AS COSTO_ASIGNADO_AL_OBJETO
 FROM default.silver_maestro_drivers_abc
 WHERE CENTRO_COSTO_ORIGEN = 'CL_CORP'"""
-
-# Base de referencia para /api/simulate-ebitda: stub matematico mientras se
-# configura la autenticacion por token del endpoint de Model Serving de
-# MLflow en Databricks. BASE_COSTO_WMS_CLP es el total real de
-# gold_abc_operational_costs (ver CLAUDE.md), convertido a USD con la tasa
-# FX que manda el simulador en vez de una constante fija.
-BASE_EBITDA_USD = 4_200_000.0
-BASE_COSTO_WMS_CLP = 4_658_873.0
 
 
 class SimulationPayload(BaseModel):
@@ -128,14 +129,54 @@ def get_corporate_costs():
     return run_query(SQL_CORP_COSTS)
 
 
+def get_current_ebitda() -> float:
+    for row in run_query(SQL_MPM):
+        if row["Concepto"].endswith("EBITDA Ajustado"):
+            return float(row["Monto"])
+    raise HTTPException(
+        status_code=502,
+        detail="No se encontro la fila 'EBITDA Ajustado' en gold_mpm_reconciliation",
+    )
+
+
 @app.post("/api/simulate-ebitda")
-def simulate_ebitda(payload: SimulationPayload):
-    volumen_impact = BASE_EBITDA_USD * (payload.volumen_delta_pct / 100)
-    costo_wms_usd_base = BASE_COSTO_WMS_CLP / payload.tasa_fx_clp_usd
-    costo_impact = costo_wms_usd_base * (payload.costo_wms_delta_pct / 100)
-    predicted_ebitda = BASE_EBITDA_USD + volumen_impact - costo_impact
+def simulate_ebitda(payload_in: SimulationPayload):
+    current_ebitda = get_current_ebitda()
+
+    payload = {
+        "dataframe_split": {
+            "columns": ["volumen_delta", "costo_wms_delta", "tasa_fx"],
+            "data": [
+                [
+                    payload_in.volumen_delta_pct,
+                    payload_in.costo_wms_delta_pct,
+                    payload_in.tasa_fx_clp_usd,
+                ]
+            ],
+        }
+    }
+    url = (
+        f"https://{DATABRICKS_SERVER_HOSTNAME}/serving-endpoints/"
+        f"{DATABRICKS_MODEL_ENDPOINT}/invocations"
+    )
+
+    try:
+        response = requests.post(
+            url,
+            headers={"Authorization": f"Bearer {DATABRICKS_TOKEN}"},
+            json=payload,
+            timeout=30,
+        )
+        response.raise_for_status()
+        predicted_ebitda = float(response.json()["predictions"][0])
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error invocando el Model Serving endpoint ({url}): {exc}",
+        ) from exc
+
     return {
-        "current_ebitda": BASE_EBITDA_USD,
+        "current_ebitda": current_ebitda,
         "predicted_ebitda": predicted_ebitda,
-        "delta_usd": predicted_ebitda - BASE_EBITDA_USD,
+        "delta_usd": predicted_ebitda - current_ebitda,
     }
