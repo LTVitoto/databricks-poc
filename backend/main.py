@@ -26,6 +26,7 @@ from databricks import sql
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 
 load_dotenv()
 
@@ -60,6 +61,21 @@ SQL_CORP_COSTS = """SELECT PERIODO_MES AS periodo_mes,
     COSTO_ASIGNADO_AL_OBJETO AS COSTO_ASIGNADO_AL_OBJETO
 FROM default.silver_maestro_drivers_abc
 WHERE CENTRO_COSTO_ORIGEN = 'CL_CORP'"""
+
+# Base de referencia para /api/simulate-ebitda: stub matematico mientras se
+# configura la autenticacion por token del endpoint de Model Serving de
+# MLflow en Databricks. BASE_COSTO_WMS_CLP es el total real de
+# gold_abc_operational_costs (ver CLAUDE.md), convertido a USD con la tasa
+# FX que manda el simulador en vez de una constante fija.
+BASE_EBITDA_USD = 4_200_000.0
+BASE_COSTO_WMS_CLP = 4_658_873.0
+
+
+class SimulationPayload(BaseModel):
+    volumen_delta_pct: float
+    costo_wms_delta_pct: float
+    tasa_fx_clp_usd: float
+
 
 app = FastAPI(title="CFO Dashboard API")
 
@@ -110,3 +126,16 @@ def get_abc_costs():
 @app.get("/api/corporate-costs")
 def get_corporate_costs():
     return run_query(SQL_CORP_COSTS)
+
+
+@app.post("/api/simulate-ebitda")
+def simulate_ebitda(payload: SimulationPayload):
+    volumen_impact = BASE_EBITDA_USD * (payload.volumen_delta_pct / 100)
+    costo_wms_usd_base = BASE_COSTO_WMS_CLP / payload.tasa_fx_clp_usd
+    costo_impact = costo_wms_usd_base * (payload.costo_wms_delta_pct / 100)
+    predicted_ebitda = BASE_EBITDA_USD + volumen_impact - costo_impact
+    return {
+        "current_ebitda": BASE_EBITDA_USD,
+        "predicted_ebitda": predicted_ebitda,
+        "delta_usd": predicted_ebitda - BASE_EBITDA_USD,
+    }

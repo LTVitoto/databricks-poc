@@ -18,6 +18,11 @@ export default function EnterpriseCFO() {
   const [cedi, setCedi] = useState(null);
   const [recurso, setRecurso] = useState(null);
 
+  const [showSimulator, setShowSimulator] = useState(false);
+  const [simParams, setSimParams] = useState({ vol: 0, wms: 0, fx: 990 });
+  const [simResult, setSimResult] = useState(null);
+  const [isSimulating, setIsSimulating] = useState(false);
+
   useEffect(() => {
     fetch('http://localhost:8000/api/abc-costs')
       .then(res => res.json())
@@ -74,6 +79,22 @@ export default function EnterpriseCFO() {
     return rawData.filter(d => d.dimension === dim && d.cedi === cedi && d.recurso === recurso);
   }, [rawData, dim, cedi, recurso]);
 
+  const runSimulation = async () => {
+    setIsSimulating(true);
+    try {
+      const res = await fetch('http://localhost:8000/api/simulate-ebitda', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ volumen_delta_pct: simParams.vol, costo_wms_delta_pct: simParams.wms, tasa_fx_clp_usd: simParams.fx })
+      });
+      const data = await res.json();
+      setSimResult(data);
+    } catch (e) {
+      console.error(e);
+    }
+    setIsSimulating(false);
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50">
@@ -90,11 +111,95 @@ export default function EnterpriseCFO() {
           <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Financial Intelligence Center</h1>
           <p className="text-sm text-slate-500 font-medium">Motor de Costeo ABC & IFRS 18</p>
         </div>
-        <div className="text-right">
-          <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-1">Costo Logístico Total Analizado</p>
-          <p className="text-3xl font-extrabold text-red-600">{formatUSD(totalCost)}</p>
+        <div className="text-right flex items-center">
+          <div>
+            <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-1">Costo Logístico Total Analizado</p>
+            <p className="text-3xl font-extrabold text-red-600">{formatUSD(totalCost)}</p>
+          </div>
+          <button onClick={() => setShowSimulator(!showSimulator)} className="ml-4 bg-slate-900 hover:bg-slate-800 text-white text-xs px-4 py-2 rounded shadow-md font-bold uppercase tracking-wider flex items-center gap-2">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg> AI Predictor
+          </button>
         </div>
       </header>
+
+      {showSimulator && (
+        <div className="bg-slate-900 text-white px-8 py-6 border-b border-slate-700">
+          <div className="max-w-[1600px] mx-auto">
+            <h2 className="text-sm font-bold text-indigo-300 uppercase tracking-wider mb-4">Simulador Predictivo XGBoost</h2>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+              <div>
+                <label className="flex justify-between text-xs font-semibold text-slate-300 mb-2">
+                  <span>Volumen</span>
+                  <span>{simParams.vol > 0 ? '+' : ''}{simParams.vol}%</span>
+                </label>
+                <input
+                  type="range"
+                  min="-20"
+                  max="20"
+                  value={simParams.vol}
+                  onChange={(e) => setSimParams({ ...simParams, vol: Number(e.target.value) })}
+                  className="w-full accent-indigo-500"
+                />
+              </div>
+              <div>
+                <label className="flex justify-between text-xs font-semibold text-slate-300 mb-2">
+                  <span>Costos WMS</span>
+                  <span>{simParams.wms > 0 ? '+' : ''}{simParams.wms}%</span>
+                </label>
+                <input
+                  type="range"
+                  min="-20"
+                  max="20"
+                  value={simParams.wms}
+                  onChange={(e) => setSimParams({ ...simParams, wms: Number(e.target.value) })}
+                  className="w-full accent-indigo-500"
+                />
+              </div>
+              <div>
+                <label className="flex justify-between text-xs font-semibold text-slate-300 mb-2">
+                  <span>Tasa FX (CLP/USD)</span>
+                  <span>{simParams.fx}</span>
+                </label>
+                <input
+                  type="range"
+                  min="800"
+                  max="1200"
+                  value={simParams.fx}
+                  onChange={(e) => setSimParams({ ...simParams, fx: Number(e.target.value) })}
+                  className="w-full accent-indigo-500"
+                />
+              </div>
+            </div>
+
+            <button
+              onClick={runSimulation}
+              disabled={isSimulating}
+              className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs px-5 py-2.5 rounded font-bold uppercase tracking-wider transition-colors"
+            >
+              {isSimulating ? 'Ejecutando...' : 'Ejecutar XGBoost'}
+            </button>
+
+            {simResult && (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
+                <div className="bg-slate-800 rounded-lg p-4 border border-slate-700">
+                  <p className="text-xs text-slate-400 uppercase font-bold tracking-wider mb-1">EBITDA Actual</p>
+                  <p className="text-2xl font-bold">{formatUSD(simResult.current_ebitda)}</p>
+                </div>
+                <div className="bg-slate-800 rounded-lg p-4 border border-slate-700">
+                  <p className="text-xs text-slate-400 uppercase font-bold tracking-wider mb-1">Predicted EBITDA</p>
+                  <p className="text-2xl font-bold text-indigo-300">{formatUSD(simResult.predicted_ebitda)}</p>
+                </div>
+                <div className="bg-slate-800 rounded-lg p-4 border border-slate-700">
+                  <p className="text-xs text-slate-400 uppercase font-bold tracking-wider mb-1">Delta</p>
+                  <p className={`text-2xl font-bold ${simResult.delta_usd >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                    {simResult.delta_usd >= 0 ? '+' : ''}{formatUSD(simResult.delta_usd)}
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       <main className="p-8 max-w-[1600px] mx-auto space-y-6">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
